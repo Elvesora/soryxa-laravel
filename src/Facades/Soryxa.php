@@ -7,7 +7,7 @@ use Elvesora\Soryxa\Responses\ValidationResult;
 use Elvesora\Soryxa\SoryxaClient;
 
 /**
- * @method static ValidationResult validate(string $email)
+ * @method static ValidationResult validate(string $email, ?string $policyKey = null, array $headers = [])
  *
  * @see SoryxaClient
  */
