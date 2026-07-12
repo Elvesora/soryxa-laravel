@@ -36,13 +36,23 @@ class SoryxaClient {
      *
      * @throws SoryxaException
      */
-    public function validate(string $email): ValidationResult {
+    public function validate(
+        string $email,
+        ?string $policyKey = null,
+        array $headers = [],
+    ): ValidationResult {
         try {
-            $body = $this->post('/api/v1/validate', [
-                'email' => $email,
-            ]);
+            $response = $this->send(
+                'post',
+                '/api/v1/validate',
+                $this->validationPayload($email, $policyKey),
+                $headers,
+            );
 
-            return ValidationResult::fromResponse($body);
+            return ValidationResult::fromResponse(
+                $response->json() ?? [],
+                $this->validationHeaders($response),
+            );
         } catch (UsageLimitException $e) {
             if ($this->silentOnLimit) {
                 return ValidationResult::limitExceeded($email);
@@ -52,25 +62,49 @@ class SoryxaClient {
         }
     }
 
+    protected function validationPayload(string $email, ?string $policyKey = null): array {
+        $payload = ['email' => $email];
+
+        if ($policyKey !== null) {
+            $payload['policy_key'] = $policyKey;
+        }
+
+        return $payload;
+    }
+
+    protected function validationHeaders(Response $response): array {
+        $headers = [];
+
+        foreach (['X-Soryxa-Reason-Code', 'X-Soryxa-Correlation-Id'] as $name) {
+            $value = $response->header($name);
+
+            if ($value !== null) {
+                $headers[$name] = $value;
+            }
+        }
+
+        return $headers;
+    }
+
     // -------------------------------------------------------------------------
     //  HTTP Transport
     // -------------------------------------------------------------------------
 
-    protected function get(string $path, array $query = []): array {
-        $response = $this->send('get', $path, $query);
+    protected function get(string $path, array $query = [], array $headers = []): array {
+        $response = $this->send('get', $path, $query, $headers);
 
         return $response->json();
     }
 
-    protected function post(string $path, array $data = []): array {
-        $response = $this->send('post', $path, $data);
+    protected function post(string $path, array $data = [], array $headers = []): array {
+        $response = $this->send('post', $path, $data, $headers);
 
         return $response->json();
     }
 
-    protected function send(string $method, string $path, array $data = []): Response {
+    protected function send(string $method, string $path, array $data = [], array $headers = []): Response {
         try {
-            $request = $this->request();
+            $request = $this->request($headers);
 
             $response = $method === 'get'
                 ? $request->get($this->url($path), $data)
@@ -86,10 +120,14 @@ class SoryxaClient {
         return $response;
     }
 
-    protected function request(): PendingRequest {
+    protected function request(array $headers = []): PendingRequest {
         $pending = Http::withToken($this->token)
             ->timeout($this->timeout)
             ->acceptJson();
+
+        if ($headers !== []) {
+            $pending = $pending->withHeaders($headers);
+        }
 
         if ($this->retries > 0) {
             $pending->retry($this->retries, $this->retryDelay, fn ($e, $request) => $e->response?->status() >= 500);

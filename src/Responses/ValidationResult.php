@@ -12,70 +12,113 @@ class ValidationResult {
         public readonly int $score,
         public readonly ?array $rawData,
         public readonly Usage $usage,
+        public readonly ?string $policyKey = null,
+        public readonly ?string $customerMessage = null,
+        public readonly mixed $autoResolution = null,
+        public readonly array $rollout = [],
+        public readonly ?int $baseScore = null,
+        public readonly array $scoreAdjustments = [],
+        public readonly ?array $upstream = null,
+        public readonly array $data = [],
+        public readonly array $headers = [],
     ) {
     }
 
     public static function limitExceeded(string $email): self {
         $parts = explode('@', $email, 2);
+        $message = 'Usage limit exceeded. Review or retry after credits are available.';
+        $rawData = [
+            'email' => $email,
+            'username' => $parts[0] ?? null,
+            'domain' => $parts[1] ?? null,
+            'first_name' => null,
+            'last_name' => null,
+            'score' => null,
+            'classification' => null,
+            'checks' => [
+                'syntax' => null,
+                'tld' => null,
+                'tld_valid' => null,
+                'domain_mx' => null,
+                'smtp' => null,
+                'disposable' => null,
+                'free_provider' => null,
+                'bogus' => null,
+                'bogus_username' => null,
+                'role_account' => null,
+                'catch_all' => null,
+                'domain_registered' => null,
+                'is_newly_registered_domain' => null,
+            ],
+        ];
+        $data = [
+            'policy_key' => 'default',
+            'decision' => 'review',
+            'reason_code' => 'LIMIT_EXCEEDED',
+            'decision_message' => $message,
+            'customer_message' => $message,
+            'decision_reasons' => ['Usage limit exceeded.'],
+            'auto_resolution' => null,
+            'rollout' => [],
+            'checks' => [],
+            'score' => 0,
+            'base_score' => 0,
+            'score_adjustments' => [],
+            'raw_data' => $rawData,
+            'upstream' => null,
+        ];
 
         return new self(
-            decision: 'allow',
+            decision: 'review',
             reasonCode: 'LIMIT_EXCEEDED',
-            decisionMessage: 'You have exceeded your monthly usage limit.',
-            decisionReasons: [],
+            decisionMessage: $message,
+            decisionReasons: ['Usage limit exceeded.'],
             checks: [],
             score: 0,
-            rawData: [
-                'email' => $email,
-                'username' => $parts[0] ?? null,
-                'domain' => $parts[1] ?? null,
-                'first_name' => null,
-                'last_name' => null,
-                'score' => null,
-                'classification' => null,
-                'checks' => [
-                    'syntax' => null,
-                    'tld' => null,
-                    'tld_valid' => null,
-                    'domain_mx' => null,
-                    'smtp' => null,
-                    'disposable' => null,
-                    'free_provider' => null,
-                    'bogus' => null,
-                    'bogus_username' => null,
-                    'role_account' => null,
-                    'catch_all' => null,
-                    'domain_registered' => null,
-                    'is_newly_registered_domain' => null,
-                ],
-            ],
+            rawData: $rawData,
             usage: new Usage(remaining: 0, limit: 0),
+            policyKey: 'default',
+            customerMessage: $message,
+            autoResolution: null,
+            rollout: [],
+            baseScore: 0,
+            scoreAdjustments: [],
+            upstream: null,
+            data: $data,
         );
     }
 
-    public static function fromResponse(array $body): self {
-        $data = $body['data'];
+    public static function fromResponse(array $body, array $headers = []): self {
+        $data = is_array($body['data'] ?? null) ? $body['data'] : [];
+        unset($data['context_signals']);
 
         return new self(
-            decision: $data['decision'],
-            reasonCode: $data['reason_code'] ?? 'UNKNOWN',
-            decisionMessage: $data['decision_message'] ?? '',
-            decisionReasons: $data['decision_reasons'] ?? [],
+            decision: (string) ($data['decision'] ?? 'review'),
+            reasonCode: (string) ($data['reason_code'] ?? 'UNKNOWN'),
+            decisionMessage: (string) ($data['decision_message'] ?? ''),
+            decisionReasons: is_array($data['decision_reasons'] ?? null) ? $data['decision_reasons'] : [],
             checks: array_map(
                 fn (array $check) => new Check(
-                    name: $check['name'],
-                    status: $check['status'],
-                    message: $check['message'] ?? '',
+                    name: (string) ($check['name'] ?? ''),
+                    status: (string) ($check['status'] ?? ''),
+                    message: (string) ($check['message'] ?? ''),
                 ),
-                $data['checks'] ?? [],
+                is_array($data['checks'] ?? null) ? $data['checks'] : [],
             ),
-            score: $data['score'] ?? 0,
-            rawData: $data['raw_data'] ?? null,
-            usage: Usage::fromArray($body['usage']),
+            score: (int) ($data['score'] ?? 0),
+            rawData: is_array($data['raw_data'] ?? null) ? $data['raw_data'] : null,
+            usage: Usage::fromArray(is_array($body['usage'] ?? null) ? $body['usage'] : []),
+            policyKey: isset($data['policy_key']) ? (string) $data['policy_key'] : null,
+            customerMessage: isset($data['customer_message']) ? (string) $data['customer_message'] : null,
+            autoResolution: $data['auto_resolution'] ?? null,
+            rollout: is_array($data['rollout'] ?? null) ? $data['rollout'] : [],
+            baseScore: isset($data['base_score']) ? (int) $data['base_score'] : null,
+            scoreAdjustments: is_array($data['score_adjustments'] ?? null) ? $data['score_adjustments'] : [],
+            upstream: is_array($data['upstream'] ?? null) ? $data['upstream'] : null,
+            data: $data,
+            headers: $headers,
         );
     }
-
-    // ── Decision helpers ──────────────────────────────────────
 
     public function decision(): string {
         return $this->decision;
@@ -89,12 +132,66 @@ class ValidationResult {
         return $this->decisionMessage;
     }
 
+    public function customerMessage(): ?string {
+        return $this->customerMessage;
+    }
+
     public function decisionReasons(): array {
         return $this->decisionReasons;
     }
 
+    public function policyKey(): ?string {
+        return $this->policyKey;
+    }
+
     public function score(): int {
         return $this->score;
+    }
+
+    public function baseScore(): ?int {
+        return $this->baseScore;
+    }
+
+    public function scoreAdjustments(): array {
+        return $this->scoreAdjustments;
+    }
+
+    public function autoResolution(): mixed {
+        return $this->autoResolution;
+    }
+
+    public function rollout(): array {
+        return $this->rollout;
+    }
+
+    public function upstream(): ?array {
+        return $this->upstream;
+    }
+
+    public function data(): array {
+        return $this->data;
+    }
+
+    public function headers(): array {
+        return $this->headers;
+    }
+
+    public function header(string $name): ?string {
+        foreach ($this->headers as $headerName => $value) {
+            if (strcasecmp((string) $headerName, $name) === 0) {
+                return is_array($value) ? (string) ($value[0] ?? '') : (string) $value;
+            }
+        }
+
+        return null;
+    }
+
+    public function reasonCodeHeader(): ?string {
+        return $this->header('X-Soryxa-Reason-Code');
+    }
+
+    public function correlationId(): ?string {
+        return $this->header('X-Soryxa-Correlation-Id');
     }
 
     public function isAllowed(): bool {
@@ -112,8 +209,6 @@ class ValidationResult {
     public function isLimitExceeded(): bool {
         return $this->reasonCode === 'LIMIT_EXCEEDED';
     }
-
-    // ── Email & identity accessors ───────────────────────────
 
     public function email(): ?string {
         return $this->rawData['email'] ?? null;
@@ -138,8 +233,6 @@ class ValidationResult {
     public function classification(): ?string {
         return $this->rawData['classification'] ?? null;
     }
-
-    // ── Boolean check helpers ────────────────────────────────
 
     public function isSyntaxValid(): bool {
         return $this->rawData['checks']['syntax'] ?? false;
@@ -189,8 +282,6 @@ class ValidationResult {
         return $this->rawData['checks']['is_newly_registered_domain'] ?? false;
     }
 
-    // ── Check collection helpers ─────────────────────────────
-
     public function getCheck(string $name): ?Check {
         foreach ($this->checks as $check) {
             if (strcasecmp($check->name, $name) === 0) {
@@ -213,18 +304,24 @@ class ValidationResult {
         return array_values(array_filter($this->checks, fn (Check $c) => $c->isWarning()));
     }
 
-    // ── Serialization ────────────────────────────────────────
-
     public function toArray(): array {
-        return [
+        return array_merge($this->data, [
+            'policy_key' => $this->policyKey,
             'decision' => $this->decision,
             'reason_code' => $this->reasonCode,
             'decision_message' => $this->decisionMessage,
+            'customer_message' => $this->customerMessage,
             'decision_reasons' => $this->decisionReasons,
+            'auto_resolution' => $this->autoResolution,
+            'rollout' => $this->rollout,
             'checks' => array_map(fn (Check $c) => $c->toArray(), $this->checks),
             'score' => $this->score,
+            'base_score' => $this->baseScore,
+            'score_adjustments' => $this->scoreAdjustments,
             'raw_data' => $this->rawData,
+            'upstream' => $this->upstream,
             'usage' => $this->usage->toArray(),
-        ];
+            'headers' => $this->headers,
+        ]);
     }
 }

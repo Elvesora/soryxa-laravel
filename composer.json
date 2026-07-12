@@ -1,6 +1,5 @@
 {
     "name": "elvesora/soryxa-laravel",
-    "version": "1.0.0",
     "description": "Laravel SDK for the Soryxa email validation API",
     "keywords": ["soryxa", "email", "validation", "laravel"],
     "license": "MIT",
@@ -25,6 +24,9 @@
         "psr-4": {
             "Elvesora\\Soryxa\\Tests\\": "tests/"
         }
+    },
+    "scripts": {
+        "test": "@php tests/run.php"
     },
     "extra": {
         "laravel": {

@@ -62,8 +62,8 @@ return [
     |
     | When enabled, exceeding your usage limit will NOT throw a
     | UsageLimitException. Instead, validate() returns a result with
-    | decision "allow" and reasonCode "LIMIT_EXCEEDED", so your
-    | application flow is never interrupted by quota errors.
+    | decision "review" and reasonCode "LIMIT_EXCEEDED", so quota
+    | exhaustion never silently approves traffic.
     |
     */
     'silent_on_limit' => env('SORYXA_SILENT_ON_LIMIT', false),
